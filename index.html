@@ -15,6 +15,7 @@ button.secondary{background:#777}
 .hint{font-size:12px;color:#666;width:100%;max-width:980px}
 .color-picker{display:flex;gap:6px;align-items:center}
 .color-btn{width:24px;height:24px;border-radius:50%;border:2px solid #111;cursor:pointer}
+#textInput{position:absolute;display:none;border:1px solid #111;padding:2px 4px;font-size:16px;border-radius:4px;background:white;z-index:10}
 </style>
 </head>
 <body>
@@ -38,6 +39,7 @@ button.secondary{background:#777}
 </header>
 
 <canvas id="board" width="900" height="520"></canvas>
+<input id="textInput" type="text">
 <div class="hint">Draw, doodle or write. Click Save to persist. Reload to load last saved.</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -54,15 +56,29 @@ ctx.lineJoin = ctx.lineCap = 'round';
 ctx.strokeStyle = '#111';
 
 let drawing=false, lastX=0, lastY=0;
-let history = [], redoStack = [];
 let textMode=false;
+let actions=[], redoStack=[];
 
-function saveHistory() {
-  history.push(canvas.toDataURL());
-  if(history.length>50) history.shift(); // limit history size
-  redoStack = [];
+function redrawCanvas(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  actions.forEach(a=>{
+    if(a.type==='stroke'){
+      ctx.strokeStyle = a.color;
+      ctx.beginPath();
+      a.points.forEach((p,i)=>{
+        if(i===0) ctx.moveTo(p.x,p.y);
+        else ctx.lineTo(p.x,p.y);
+      });
+      ctx.stroke();
+    } else if(a.type==='text'){
+      ctx.fillStyle = a.color;
+      ctx.fillText(a.text,a.x,a.y);
+    }
+  });
 }
 
+// Drawing logic
+let currentStroke=null;
 function getPointer(e){
   if(e.touches){
     const t=e.touches[0];
@@ -76,71 +92,87 @@ function getPointer(e){
 canvas.addEventListener('pointerdown', (e)=>{
   if(textMode){
     const p=getPointer(e);
-    const txt=prompt("Type your text:");
-    if(txt){
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.fillText(txt, p.x, p.y);
-      saveHistory();
-    }
+    const input = document.getElementById('textInput');
+    input.style.left = (canvas.offsetLeft+p.x) + 'px';
+    input.style.top = (canvas.offsetTop+p.y) + 'px';
+    input.style.display='block';
+    input.value='';
+    input.focus();
+    input.onkeydown = function(ev){
+      if(ev.key==='Enter'){
+        const txt = input.value.trim();
+        if(txt){
+          actions.push({type:'text',color:ctx.strokeStyle,x:p.x,y:p.y,text:txt});
+          redrawCanvas();
+        }
+        input.style.display='none';
+      }
+    };
     return;
   }
   drawing=true;
   const p=getPointer(e);
   lastX=p.x; lastY=p.y;
-  saveHistory();
+  currentStroke={type:'stroke',color:ctx.strokeStyle,points:[{x:lastX,y:lastY}]};
 });
 
-canvas.addEventListener('pointerup', ()=>{drawing=false; ctx.beginPath();});
 canvas.addEventListener('pointermove', (e)=>{
   if(!drawing) return;
   const p=getPointer(e);
+  ctx.strokeStyle = currentStroke.color;
   ctx.beginPath();
   ctx.moveTo(lastX,lastY);
   ctx.lineTo(p.x,p.y);
   ctx.stroke();
   lastX=p.x; lastY=p.y;
+  currentStroke.points.push({x:lastX,y:lastY});
 });
 
+canvas.addEventListener('pointerup', ()=>{
+  if(drawing){
+    drawing=false;
+    actions.push(currentStroke);
+    currentStroke=null;
+    redoStack=[];
+  }
+});
+
+// Buttons
 document.getElementById('clear').addEventListener('click', ()=>{
   if(confirm('Clear the board?')){
-    saveHistory();
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    actions.push({type:'clear'});
+    redoStack=[];
+    redrawCanvas();
   }
 });
 
 document.getElementById('undo').addEventListener('click', ()=>{
-  if(history.length>0){
-    redoStack.push(canvas.toDataURL());
-    const imgData = history.pop();
-    const img = new Image();
-    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    img.src=imgData;
+  if(actions.length>0){
+    redoStack.push(actions.pop());
+    redrawCanvas();
   }
 });
 
 document.getElementById('redo').addEventListener('click', ()=>{
   if(redoStack.length>0){
-    history.push(canvas.toDataURL());
-    const imgData = redoStack.pop();
-    const img = new Image();
-    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    img.src=imgData;
+    actions.push(redoStack.pop());
+    redrawCanvas();
   }
-});
-
-document.getElementById('textBtn').addEventListener('click', ()=>{
-  textMode = !textMode;
-  alert("Text mode " + (textMode ? "ON" : "OFF"));
 });
 
 // Color picker
 document.querySelectorAll('.color-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> ctx.strokeStyle=btn.dataset.color);
 });
-document.getElementById('customColor').addEventListener('input', (e)=>{
-  ctx.strokeStyle=e.target.value;
+document.getElementById('customColor').addEventListener('input', (e)=>ctx.strokeStyle=e.target.value);
+
+// Text tool toggle
+document.getElementById('textBtn').addEventListener('click', ()=>{
+  textMode=!textMode;
+  alert("Text mode "+(textMode?"ON":"OFF"));
 });
 
+// Download PNG
 document.getElementById('download').addEventListener('click', ()=>{
   const link=document.createElement('a');
   link.download='miniboo-board.png';
@@ -148,19 +180,21 @@ document.getElementById('download').addEventListener('click', ()=>{
   link.click();
 });
 
-// Load board from Supabase
+// Supabase load/save
 async function loadBoard(){
   let { data, error } = await supa.from("boarddata").select("content").order("id",{ascending:false}).limit(1);
   if(error) return console.error(error);
   if(data && data[0] && data[0].content){
     const img = new Image();
     img.src=data[0].content;
-    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.onload = ()=> {
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      // Optionally you could reconstruct actions from saved image if you want
+    }
   }
 }
 loadBoard();
 
-// Save to Supabase
 document.getElementById('save').addEventListener('click', async ()=>{
   const dataURL = canvas.toDataURL();
   const { error } = await supa.from("boarddata").insert({ content: dataURL });
