@@ -1,125 +1,174 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Mini & Darius Home — Board</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#faf8f6;display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px}
-    header{width:100%;max-width:980px;display:flex;justify-content:space-between;align-items:center}
-    h1{font-size:18px;margin:0}
-    #board{border:2px dashed #ddd;background:white;touch-action:none}
-    .controls{display:flex;gap:8px;align-items:center}
-    button{padding:8px 12px;border-radius:8px;border:0;background:#111;color:#fff;cursor:pointer}
-    button.secondary{background:#777}
-    .hint{font-size:12px;color:#666}
-  </style>
+<meta charset="utf-8"/>
+<title>Mini & Darius Home — Board</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#faf8f6;display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px}
+header{width:100%;max-width:980px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+h1{font-size:18px;margin:0}
+#board{border:2px dashed #ddd;background:white;touch-action:none}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{padding:6px 10px;border-radius:8px;border:0;background:#111;color:#fff;cursor:pointer}
+button.secondary{background:#777}
+.hint{font-size:12px;color:#666;width:100%;max-width:980px}
+.color-picker{display:flex;gap:6px;align-items:center}
+.color-btn{width:24px;height:24px;border-radius:50%;border:2px solid #111;cursor:pointer}
+</style>
 </head>
 <body>
 <header>
-  <h1>The Mini & Darius Home — Private Board</h1>
-  <div class="controls">
-    <button id="clear">Clear</button>
-    <button id="save">Save</button>
-    <button id="download" class="secondary">Download PNG</button>
-  </div>
+<h1>The Mini & Darius Home — Private Board</h1>
+<div class="controls">
+<button id="clear">Clear</button>
+<button id="undo">Undo</button>
+<button id="redo">Redo</button>
+<button id="save">Save</button>
+<button id="download" class="secondary">Download PNG</button>
+<button id="textBtn">Text Tool</button>
+<div class="color-picker">
+<div class="color-btn" style="background:#111" data-color="#111"></div>
+<div class="color-btn" style="background:red" data-color="red"></div>
+<div class="color-btn" style="background:blue" data-color="blue"></div>
+<div class="color-btn" style="background:green" data-color="green"></div>
+<input type="color" id="customColor">
+</div>
+</div>
 </header>
 
 <canvas id="board" width="900" height="520"></canvas>
 <div class="hint">Draw, doodle or write. Click Save to persist. Reload to load last saved.</div>
 
-<!-- Supabase JS -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // -----------------------------------------
-  // Supabase config
-  // -----------------------------------------
-  const supa = supabase.createClient(
-    "https://bqaxhhbniefavgollfcb.supabase.co", // Replace with your project URL
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYXhoaGJuaWVmYXZnb2xsZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTQwNjEsImV4cCI6MjA4MTEzMDA2MX0.089GnfqWPUq1vOp50-6ErYq0Z3Xuw3aXsaYm1ds4GHQ" // Replace with your anon key
-  );
+const supa = supabase.createClient(
+"https://bqaxhhbniefavgollfcb.supabase.co",
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYXhoaGJuaWVmYXZnb2xsZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTQwNjEsImV4cCI6MjA4MTEzMDA2MX0.089GnfqWPUq1vOp50-6ErYq0Z3Xuw3aXsaYm1ds4GHQ"
+);
 
-  // -----------------------------------------
-  // Canvas drawing logic
-  // -----------------------------------------
-  const canvas = document.getElementById('board');
-  const ctx = canvas.getContext('2d');
-  ctx.lineWidth = 3;
-  ctx.lineJoin = ctx.lineCap = 'round';
-  ctx.strokeStyle = '#111';
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+ctx.lineWidth = 3;
+ctx.lineJoin = ctx.lineCap = 'round';
+ctx.strokeStyle = '#111';
 
-  let drawing=false, lastX=0, lastY=0;
+let drawing=false, lastX=0, lastY=0;
+let history = [], redoStack = [];
+let textMode=false;
 
-  function getPointer(e){
-    if(e.touches){
-      const t = e.touches[0];
-      const rect = canvas.getBoundingClientRect();
-      return {x: t.clientX - rect.left, y: t.clientY - rect.top};
-    } else {
-      return {x: e.offsetX, y: e.offsetY};
-    }
+function saveHistory() {
+  history.push(canvas.toDataURL());
+  if(history.length>50) history.shift(); // limit history size
+  redoStack = [];
+}
+
+function getPointer(e){
+  if(e.touches){
+    const t=e.touches[0];
+    const rect=canvas.getBoundingClientRect();
+    return {x:t.clientX-rect.left,y:t.clientY-rect.top};
+  }else{
+    return {x:e.offsetX,y:e.offsetY};
   }
+}
 
-  canvas.addEventListener('pointerdown', (e)=>{
-    drawing=true;
+canvas.addEventListener('pointerdown', (e)=>{
+  if(textMode){
     const p=getPointer(e);
-    lastX=p.x; lastY=p.y;
-  });
-  canvas.addEventListener('pointerup', ()=>{
-    drawing=false; ctx.beginPath();
-  });
-  canvas.addEventListener('pointermove', (e)=>{
-    if(!drawing) return;
-    const p=getPointer(e);
-    ctx.beginPath();
-    ctx.moveTo(lastX,lastY);
-    ctx.lineTo(p.x,p.y);
-    ctx.stroke();
-    lastX=p.x; lastY=p.y;
-  });
+    const txt=prompt("Type your text:");
+    if(txt){
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fillText(txt, p.x, p.y);
+      saveHistory();
+    }
+    return;
+  }
+  drawing=true;
+  const p=getPointer(e);
+  lastX=p.x; lastY=p.y;
+  saveHistory();
+});
 
-  // Clear
-  document.getElementById('clear').addEventListener('click', ()=>{
-    if(!confirm('Clear the board?')) return;
+canvas.addEventListener('pointerup', ()=>{drawing=false; ctx.beginPath();});
+canvas.addEventListener('pointermove', (e)=>{
+  if(!drawing) return;
+  const p=getPointer(e);
+  ctx.beginPath();
+  ctx.moveTo(lastX,lastY);
+  ctx.lineTo(p.x,p.y);
+  ctx.stroke();
+  lastX=p.x; lastY=p.y;
+});
+
+document.getElementById('clear').addEventListener('click', ()=>{
+  if(confirm('Clear the board?')){
+    saveHistory();
     ctx.clearRect(0,0,canvas.width,canvas.height);
-  });
-
-  // Download PNG
-  document.getElementById('download').addEventListener('click', ()=>{
-    const link = document.createElement('a');
-    link.download='miniboo-board.png';
-    link.href=canvas.toDataURL('image/png');
-    link.click();
-  });
-
-  // Load latest board from Supabase
-  async function loadBoard(){
-    let { data, error } = await supa
-      .from("boarddata")
-      .select("content")
-      .order("id",{ascending:false})
-      .limit(1);
-
-    if(error) return console.error(error);
-    if(data && data[0] && data[0].content){
-      const img = new Image();
-      img.src = data[0].content;
-      img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    }
   }
-  loadBoard();
+});
 
-  // Save to Supabase
-  document.getElementById('save').addEventListener('click', async ()=>{
-    const dataURL = canvas.toDataURL();
-    const { error } = await supa.from("boarddata").insert({ content: dataURL });
-    if(error){
-      console.error(error);
-      alert("Save failed — check console");
-    } else {
-      alert("Saved!");
-    }
-  });
+document.getElementById('undo').addEventListener('click', ()=>{
+  if(history.length>0){
+    redoStack.push(canvas.toDataURL());
+    const imgData = history.pop();
+    const img = new Image();
+    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.src=imgData;
+  }
+});
+
+document.getElementById('redo').addEventListener('click', ()=>{
+  if(redoStack.length>0){
+    history.push(canvas.toDataURL());
+    const imgData = redoStack.pop();
+    const img = new Image();
+    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.src=imgData;
+  }
+});
+
+document.getElementById('textBtn').addEventListener('click', ()=>{
+  textMode = !textMode;
+  alert("Text mode " + (textMode ? "ON" : "OFF"));
+});
+
+// Color picker
+document.querySelectorAll('.color-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> ctx.strokeStyle=btn.dataset.color);
+});
+document.getElementById('customColor').addEventListener('input', (e)=>{
+  ctx.strokeStyle=e.target.value;
+});
+
+document.getElementById('download').addEventListener('click', ()=>{
+  const link=document.createElement('a');
+  link.download='miniboo-board.png';
+  link.href=canvas.toDataURL('image/png');
+  link.click();
+});
+
+// Load board from Supabase
+async function loadBoard(){
+  let { data, error } = await supa.from("boarddata").select("content").order("id",{ascending:false}).limit(1);
+  if(error) return console.error(error);
+  if(data && data[0] && data[0].content){
+    const img = new Image();
+    img.src=data[0].content;
+    img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
+  }
+}
+loadBoard();
+
+// Save to Supabase
+document.getElementById('save').addEventListener('click', async ()=>{
+  const dataURL = canvas.toDataURL();
+  const { error } = await supa.from("boarddata").insert({ content: dataURL });
+  if(error){
+    console.error(error);
+    alert("Save failed — check console");
+  } else alert("Saved!");
+});
 </script>
 </body>
 </html>
