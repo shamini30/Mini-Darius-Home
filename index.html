@@ -92,54 +92,35 @@ document.getElementById('download').addEventListener('click', ()=>{
   JSONBin save & load
   We'll save a compressed JPEG dataURL to keep size small.
 ------------------------------------------*/
-async function loadFromBin(){
-  try {
-    const res = await fetch(`${API_BASE}/${BIN_ID}/latest`);
-    if(!res.ok) {
-      console.warn('Could not load bin, status', res.status);
-      return;
-    }
-    const payload = await res.json();
-    // v3 returns data under record property
-    const data = payload && payload.record;
-    if(!data || !data.image) return;
+// Load latest board
+async function loadBoard(){
+  let { data, error } = await supa
+    .from("boarddata")
+    .select("content")
+    .order("id", { ascending: false })
+    .limit(1);
+
+  if(error) return console.error(error);
+  if(data && data[0] && data[0].content){
     const img = new Image();
-    img.onload = ()=> ctx.drawImage(img, 0,0, canvas.width, canvas.height);
-    img.src = data.image;
-  } catch(err){
-    console.error('Load error', err);
+    img.src = data[0].content;
+    img.onload = () => ctx.drawImage(img,0,0,canvas.width,canvas.height);
   }
 }
+loadBoard();
 
-async function saveToBin(){
-  try {
-    // use compressed jpeg to save size (quality 0.7)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-    const body = JSON.stringify({ image: dataUrl });
-    const res = await fetch(`${API_BASE}/${BIN_ID}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': API_KEY
-      },
-      body
-    });
-    if(!res.ok) {
-      alert('Save failed. Check console for details.');
-      console.error('Save failed', await res.text());
-      return;
-    }
-    alert('Saved.');
-  } catch(err){
-    console.error('Save error', err);
-    alert('Save error — check console');
+// Save button
+document.getElementById("save").addEventListener("click", async () => {
+  const dataURL = canvas.toDataURL();
+  const { error } = await supa.from("boarddata").insert({ content: dataURL });
+  if(error){
+    console.error(error);
+    alert("Save failed — check console");
+  } else {
+    alert("Saved!");
   }
-}
+});
 
-document.getElementById('save').addEventListener('click', saveToBin);
-
-/* Load when page opens */
-loadFromBin();
 
 /* Optional: autosave every 30s — uncomment to use
 setInterval(()=> {
@@ -150,4 +131,5 @@ setInterval(()=> {
 </script>
 </body>
 </html>
+
 
