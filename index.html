@@ -32,9 +32,11 @@
 /* -----------------------------------------
   CONFIG — paste your JSONBin values here
 ------------------------------------------*/
-const BIN_ID = "693c4a5343b1c97be9e9b78e";           // e.g. "63f...."
-const API_KEY = "$2a$10$mmTSf5gDK8LeM..lyUEqWecp1s3fBETTf6an9DLyvCLwwbvqLZo9i";     // Access key with update permission
-const API_BASE = "https://api.jsonbin.io/v3/b"; // jsonbin v3 endpoints
+const supa = supabase.createClient(
+  "https://bqaxhhbniefavgollfcb.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYXhoaGJuaWVmYXZnb2xsZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTQwNjEsImV4cCI6MjA4MTEzMDA2MX0.089GnfqWPUq1vOp50-6ErYq0Z3Xuw3aXsaYm1ds4GHQ"
+);
+
 
 /* -----------------------------------------
   Canvas drawing logic (simple) 
@@ -148,3 +150,4 @@ setInterval(()=> {
 </script>
 </body>
 </html>
+
