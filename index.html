@@ -28,108 +28,98 @@
 <canvas id="board" width="900" height="520"></canvas>
 <div class="hint">Draw, doodle or write. Click Save to persist. Reload to load last saved.</div>
 
+<!-- Supabase JS -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* -----------------------------------------
-  CONFIG — paste your JSONBin values here
-------------------------------------------*/
-const supa = supabase.createClient(
-  "https://bqaxhhbniefavgollfcb.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYXhoaGJuaWVmYXZnb2xsZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTQwNjEsImV4cCI6MjA4MTEzMDA2MX0.089GnfqWPUq1vOp50-6ErYq0Z3Xuw3aXsaYm1ds4GHQ"
-);
+  // -----------------------------------------
+  // Supabase config
+  // -----------------------------------------
+  const supa = supabase.createClient(
+    "https://bqaxhhbniefavgollfcb.supabase.co", // Replace with your project URL
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxYXhoaGJuaWVmYXZnb2xsZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTQwNjEsImV4cCI6MjA4MTEzMDA2MX0.089GnfqWPUq1vOp50-6ErYq0Z3Xuw3aXsaYm1ds4GHQ" // Replace with your anon key
+  );
 
+  // -----------------------------------------
+  // Canvas drawing logic
+  // -----------------------------------------
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 3;
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.strokeStyle = '#111';
 
-/* -----------------------------------------
-  Canvas drawing logic (simple) 
-------------------------------------------*/
-const canvas = document.getElementById('board');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
-let drawing=false, lastX=0, lastY=0;
-ctx.lineWidth = 3;
-ctx.lineJoin = ctx.lineCap = 'round';
-ctx.strokeStyle = '#111';
+  let drawing=false, lastX=0, lastY=0;
 
-function getPointer(e){
-  if(e.touches) {
-    const t = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    return {x: t.clientX - rect.left, y: t.clientY - rect.top};
-  } else {
-    return {x: e.offsetX, y: e.offsetY};
+  function getPointer(e){
+    if(e.touches){
+      const t = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      return {x: t.clientX - rect.left, y: t.clientY - rect.top};
+    } else {
+      return {x: e.offsetX, y: e.offsetY};
+    }
   }
-}
 
-canvas.addEventListener('pointerdown', (e)=>{
-  drawing = true;
-  const p = getPointer(e);
-  lastX = p.x; lastY = p.y;
-});
-canvas.addEventListener('pointerup', ()=> { drawing=false; ctx.beginPath(); });
-canvas.addEventListener('pointermove', (e)=>{
-  if(!drawing) return;
-  const p = getPointer(e);
-  ctx.beginPath();
-  ctx.moveTo(lastX, lastY);
-  ctx.lineTo(p.x, p.y);
-  ctx.stroke();
-  lastX = p.x; lastY = p.y;
-});
+  canvas.addEventListener('pointerdown', (e)=>{
+    drawing=true;
+    const p=getPointer(e);
+    lastX=p.x; lastY=p.y;
+  });
+  canvas.addEventListener('pointerup', ()=>{
+    drawing=false; ctx.beginPath();
+  });
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!drawing) return;
+    const p=getPointer(e);
+    ctx.beginPath();
+    ctx.moveTo(lastX,lastY);
+    ctx.lineTo(p.x,p.y);
+    ctx.stroke();
+    lastX=p.x; lastY=p.y;
+  });
 
-/* Clear button */
-document.getElementById('clear').addEventListener('click', ()=>{
-  if(!confirm('Clear the board?')) return;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-});
+  // Clear
+  document.getElementById('clear').addEventListener('click', ()=>{
+    if(!confirm('Clear the board?')) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
 
-/* Download PNG */
-document.getElementById('download').addEventListener('click', ()=>{
-  const link = document.createElement('a');
-  link.download = 'miniboo-board.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-});
+  // Download PNG
+  document.getElementById('download').addEventListener('click', ()=>{
+    const link = document.createElement('a');
+    link.download='miniboo-board.png';
+    link.href=canvas.toDataURL('image/png');
+    link.click();
+  });
 
-/* -----------------------------------------
-  JSONBin save & load
-  We'll save a compressed JPEG dataURL to keep size small.
-------------------------------------------*/
-// Load latest board
-async function loadBoard(){
-  let { data, error } = await supa
-    .from("boarddata")
-    .select("content")
-    .order("id", { ascending: false })
-    .limit(1);
+  // Load latest board from Supabase
+  async function loadBoard(){
+    let { data, error } = await supa
+      .from("boarddata")
+      .select("content")
+      .order("id",{ascending:false})
+      .limit(1);
 
-  if(error) return console.error(error);
-  if(data && data[0] && data[0].content){
-    const img = new Image();
-    img.src = data[0].content;
-    img.onload = () => ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    if(error) return console.error(error);
+    if(data && data[0] && data[0].content){
+      const img = new Image();
+      img.src = data[0].content;
+      img.onload = ()=> ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    }
   }
-}
-loadBoard();
+  loadBoard();
 
-// Save button
-document.getElementById("save").addEventListener("click", async () => {
-  const dataURL = canvas.toDataURL();
-  const { error } = await supa.from("boarddata").insert({ content: dataURL });
-  if(error){
-    console.error(error);
-    alert("Save failed — check console");
-  } else {
-    alert("Saved!");
-  }
-});
-
-
-/* Optional: autosave every 30s — uncomment to use
-setInterval(()=> {
-  console.log('Autosave...');
-  saveToBin();
-}, 30000);
-*/
+  // Save to Supabase
+  document.getElementById('save').addEventListener('click', async ()=>{
+    const dataURL = canvas.toDataURL();
+    const { error } = await supa.from("boarddata").insert({ content: dataURL });
+    if(error){
+      console.error(error);
+      alert("Save failed — check console");
+    } else {
+      alert("Saved!");
+    }
+  });
 </script>
 </body>
 </html>
-
-
