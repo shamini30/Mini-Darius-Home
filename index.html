@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Mini & Darius Home — Board</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;background:#faf8f6;display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px}
+    header{width:100%;max-width:980px;display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:18px;margin:0}
+    #board{border:2px dashed #ddd;background:white;touch-action:none}
+    .controls{display:flex;gap:8px;align-items:center}
+    button{padding:8px 12px;border-radius:8px;border:0;background:#111;color:#fff;cursor:pointer}
+    button.secondary{background:#777}
+    .hint{font-size:12px;color:#666}
+  </style>
+</head>
+<body>
+<header>
+  <h1>The Mini & Darius Home — Private Board</h1>
+  <div class="controls">
+    <button id="clear">Clear</button>
+    <button id="save">Save</button>
+    <button id="download" class="secondary">Download PNG</button>
+  </div>
+</header>
+
+<canvas id="board" width="900" height="520"></canvas>
+<div class="hint">Draw, doodle or write. Click Save to persist. Reload to load last saved.</div>
+
+<script>
+/* -----------------------------------------
+  CONFIG — paste your JSONBin values here
+------------------------------------------*/
+const BIN_ID = "693c4a5343b1c97be9e9b78e";           // e.g. "63f...."
+const API_KEY = "$2a$10$mmTSf5gDK8LeM..lyUEqWecp1s3fBETTf6an9DLyvCLwwbvqLZo9i";     // Access key with update permission
+const API_BASE = "https://api.jsonbin.io/v3/b"; // jsonbin v3 endpoints
+
+/* -----------------------------------------
+  Canvas drawing logic (simple) 
+------------------------------------------*/
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+let drawing=false, lastX=0, lastY=0;
+ctx.lineWidth = 3;
+ctx.lineJoin = ctx.lineCap = 'round';
+ctx.strokeStyle = '#111';
+
+function getPointer(e){
+  if(e.touches) {
+    const t = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    return {x: t.clientX - rect.left, y: t.clientY - rect.top};
+  } else {
+    return {x: e.offsetX, y: e.offsetY};
+  }
+}
+
+canvas.addEventListener('pointerdown', (e)=>{
+  drawing = true;
+  const p = getPointer(e);
+  lastX = p.x; lastY = p.y;
+});
+canvas.addEventListener('pointerup', ()=> { drawing=false; ctx.beginPath(); });
+canvas.addEventListener('pointermove', (e)=>{
+  if(!drawing) return;
+  const p = getPointer(e);
+  ctx.beginPath();
+  ctx.moveTo(lastX, lastY);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+  lastX = p.x; lastY = p.y;
+});
+
+/* Clear button */
+document.getElementById('clear').addEventListener('click', ()=>{
+  if(!confirm('Clear the board?')) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+});
+
+/* Download PNG */
+document.getElementById('download').addEventListener('click', ()=>{
+  const link = document.createElement('a');
+  link.download = 'miniboo-board.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+/* -----------------------------------------
+  JSONBin save & load
+  We'll save a compressed JPEG dataURL to keep size small.
+------------------------------------------*/
+async function loadFromBin(){
+  try {
+    const res = await fetch(`${API_BASE}/${BIN_ID}/latest`);
+    if(!res.ok) {
+      console.warn('Could not load bin, status', res.status);
+      return;
+    }
+    const payload = await res.json();
+    // v3 returns data under record property
+    const data = payload && payload.record;
+    if(!data || !data.image) return;
+    const img = new Image();
+    img.onload = ()=> ctx.drawImage(img, 0,0, canvas.width, canvas.height);
+    img.src = data.image;
+  } catch(err){
+    console.error('Load error', err);
+  }
+}
+
+async function saveToBin(){
+  try {
+    // use compressed jpeg to save size (quality 0.7)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    const body = JSON.stringify({ image: dataUrl });
+    const res = await fetch(`${API_BASE}/${BIN_ID}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': API_KEY
+      },
+      body
+    });
+    if(!res.ok) {
+      alert('Save failed. Check console for details.');
+      console.error('Save failed', await res.text());
+      return;
+    }
+    alert('Saved.');
+  } catch(err){
+    console.error('Save error', err);
+    alert('Save error — check console');
+  }
+}
+
+document.getElementById('save').addEventListener('click', saveToBin);
+
+/* Load when page opens */
+loadFromBin();
+
+/* Optional: autosave every 30s — uncomment to use
+setInterval(()=> {
+  console.log('Autosave...');
+  saveToBin();
+}, 30000);
+*/
+</script>
+</body>
+</html>
